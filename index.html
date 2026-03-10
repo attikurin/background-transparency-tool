@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI背景透過ツール</title>
+    <!-- Tailwind CSS (スタイリング用) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome (アイコン用) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* 透過部分を分かりやすくするための市松模様（チェッカーボード） */
+        .checkerboard {
+            background-color: #ffffff;
+            background-image:
+                linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
+                linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
+                linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            border-radius: 0.5rem;
+        }
+
+        /* スムーズなフェードインアニメーション */
+        .fade-in {
+            animation: fadeIn 0.4s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 読み込み中のスピナーアニメーション */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #ffffff;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 font-sans p-4 md:p-8 flex flex-col items-center">
+
+    <!-- ヘッダー -->
+    <header class="text-center mb-8 w-full max-w-5xl">
+        <h1 class="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-2">
+            <i class="fa-solid fa-wand-magic-sparkles text-indigo-500 mr-2"></i>AI 背景透過ツール
+        </h1>
+        <p class="text-slate-500">ブラウザ上で安全・高速に画像の背景を自動で削除します。</p>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="w-full max-w-5xl bg-white rounded-2xl shadow-xl overflow-hidden">
+        
+        <!-- アップロードエリア -->
+        <div class="p-6 md:p-8 border-b border-slate-100">
+            <div id="dropzone" class="border-2 border-dashed border-slate-300 rounded-xl p-8 md:p-12 text-center cursor-pointer hover:bg-slate-50 transition-colors duration-200 group">
+                <input type="file" id="fileInput" accept="image/png, image/jpeg, image/webp" class="hidden">
+                <div class="text-slate-400 group-hover:text-indigo-500 transition-colors duration-200 mb-4">
+                    <i class="fa-solid fa-cloud-arrow-up text-5xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-700 mb-1">画像を選択、またはドラッグ＆ドロップ</h3>
+                <p class="text-sm text-slate-500">PNG, JPG, WEBP (最大 10MB)</p>
+                <button id="selectFileBtn" class="mt-6 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-sm transition-colors duration-200">
+                    デバイスから選択
+                </button>
+            </div>
+        </div>
+
+        <!-- プレビュー＆操作エリア（初期状態は非表示） -->
+        <div id="workspace" class="hidden p-6 md:p-8 bg-slate-50 fade-in">
+            
+            <!-- コントロールバー -->
+            <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+                <div class="text-sm font-medium text-slate-600 bg-white px-4 py-2 rounded-full shadow-sm">
+                    <i class="fa-solid fa-circle-info text-blue-500 mr-1"></i>
+                    <span id="statusText">画像が読み込まれました。</span>
+                </div>
+                
+                <div class="flex gap-3 w-full sm:w-auto">
+                    <button id="removeBtn" class="flex-1 sm:flex-none px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center">
+                        <i class="fa-solid fa-eraser mr-2"></i>背景を削除
+                    </button>
+                    <button id="downloadBtn" disabled class="flex-1 sm:flex-none px-6 py-2.5 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-lg shadow-md transition-colors duration-200 flex items-center justify-center">
+                        <i class="fa-solid fa-download mr-2"></i>保存する
+                    </button>
+                </div>
+            </div>
+
+            <!-- 画像比較グリッド -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 元画像 -->
+                <div class="flex flex-col">
+                    <h4 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">オリジナル</h4>
+                    <div class="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 p-2 flex items-center justify-center min-h-[300px] relative overflow-hidden">
+                        <img id="originalImg" src="" alt="元の画像" class="max-w-full max-h-[400px] object-contain rounded-lg">
+                    </div>
+                </div>
+
+                <!-- 処理後画像 -->
+                <div class="flex flex-col">
+                    <h4 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">結果（透過）</h4>
+                    <div class="flex-1 checkerboard shadow-sm border border-slate-200 p-2 flex items-center justify-center min-h-[300px] relative overflow-hidden">
+                        <span id="resultPlaceholder" class="text-slate-400 text-sm flex flex-col items-center">
+                            <i class="fa-regular fa-image text-3xl mb-2"></i>
+                            「背景を削除」をクリック
+                        </span>
+                        <img id="processedImg" src="" alt="透過後の画像" class="max-w-full max-h-[400px] object-contain rounded-lg hidden">
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- ローディングオーバーレイ -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center hidden">
+        <div class="spinner mb-6"></div>
+        <h2 class="text-2xl font-bold text-white mb-2 tracking-wide">AIで処理中...</h2>
+        <p id="loadingText" class="text-slate-300 text-sm font-medium bg-slate-800/50 px-4 py-2 rounded-full">
+            初回はAIモデルのダウンロードに時間がかかる場合があります。
+        </p>
+        
+        <!-- プログレスバー -->
+        <div class="w-64 h-2 bg-slate-700 rounded-full mt-4 overflow-hidden hidden" id="progressBarContainer">
+            <div id="progressBar" class="h-full bg-indigo-500 w-0 transition-all duration-300"></div>
+        </div>
+    </div>
+
+    <!-- カスタムトースト通知（Alertの代わり） -->
+    <div id="toast" class="fixed bottom-6 right-6 bg-slate-800 text-white px-6 py-4 rounded-xl shadow-2xl transform transition-all duration-300 translate-y-20 opacity-0 z-50 flex items-center gap-3">
+        <i id="toastIcon" class="fa-solid fa-circle-exclamation text-xl"></i>
+        <span id="toastMsg" class="font-medium"></span>
+    </div>
+
+    <script type="module">
+        // ESM (ES Modules) 形式でAIライブラリを直接インポート（より確実な読み込み方法）
+        import { removeBackground } from 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM要素の取得
+            const dropzone = document.getElementById('dropzone');
+            const fileInput = document.getElementById('fileInput');
+            const selectFileBtn = document.getElementById('selectFileBtn');
+            const workspace = document.getElementById('workspace');
+            const originalImg = document.getElementById('originalImg');
+            const processedImg = document.getElementById('processedImg');
+            const resultPlaceholder = document.getElementById('resultPlaceholder');
+            const removeBtn = document.getElementById('removeBtn');
+            const downloadBtn = document.getElementById('downloadBtn');
+            const statusText = document.getElementById('statusText');
+            
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            const progressBarContainer = document.getElementById('progressBarContainer');
+            const progressBar = document.getElementById('progressBar');
+            
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMsg');
+            const toastIcon = document.getElementById('toastIcon');
+
+            // 状態管理
+            let currentFile = null;
+            let processedBlobUrl = null;
+
+            // ==========================================
+            // イベントリスナーの登録
+            // ==========================================
+
+            // ドラッグ＆ドロップイベント
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropzone.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropzone.addEventListener(eventName, () => {
+                    dropzone.classList.add('bg-indigo-50', 'border-indigo-400');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropzone.addEventListener(eventName, () => {
+                    dropzone.classList.remove('bg-indigo-50', 'border-indigo-400');
+                }, false);
+            });
+
+            dropzone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length > 0) {
+                    handleFile(files[0]);
+                }
+            });
+
+            // クリックでのファイル選択
+            selectFileBtn.addEventListener('click', () => fileInput.click());
+            dropzone.addEventListener('click', (e) => {
+                if(e.target !== selectFileBtn) fileInput.click();
+            });
+
+            fileInput.addEventListener('change', function() {
+                if (this.files && this.files.length > 0) {
+                    handleFile(this.files[0]);
+                }
+            });
+
+            // 背景削除ボタン
+            removeBtn.addEventListener('click', processImage);
+
+            // ダウンロードボタン
+            downloadBtn.addEventListener('click', downloadResult);
+
+            // ==========================================
+            // メイン処理関数
+            // ==========================================
+
+            // ファイルが選択された時の処理
+            function handleFile(file) {
+                // 画像ファイルかどうかのチェック
+                if (!file.type.match('image.*')) {
+                    showToast('画像ファイル (PNG, JPG, WEBP等) を選択してください。', 'error');
+                    return;
+                }
+
+                // ファイルサイズのチェック (10MB = 10 * 1024 * 1024 bytes)
+                if (file.size > 10 * 1024 * 1024) {
+                    showToast('ファイルサイズが10MBを超えています。もっと小さな画像を選択してください。', 'error');
+                    return;
+                }
+
+                currentFile = file;
+                const objectUrl = URL.createObjectURL(file);
+                
+                // UIの更新
+                originalImg.src = objectUrl;
+                
+                // リセット
+                processedImg.src = '';
+                processedImg.classList.add('hidden');
+                resultPlaceholder.classList.remove('hidden');
+                
+                downloadBtn.disabled = true;
+                removeBtn.disabled = false;
+                
+                // ワークスペースの表示
+                workspace.classList.remove('hidden');
+                
+                // スクロール
+                workspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                statusText.textContent = '準備完了: 「背景を削除」をクリックしてください';
+            }
+
+            // 背景透過AI処理の実行
+            async function processImage() {
+                if (!currentFile) return;
+
+                // インポートされた関数が存在するか確認
+                if (typeof removeBackground !== 'function') {
+                    showToast('AIライブラリの読み込みに失敗しました。ページをリロードしてください。', 'error');
+                    return;
+                }
+
+                try {
+                    // UIをローディング状態にする
+                    removeBtn.disabled = true;
+                    loadingOverlay.classList.remove('hidden');
+                    progressBarContainer.classList.remove('hidden');
+                    progressBar.style.width = '0%';
+                    loadingText.textContent = '初期化中...';
+
+                    // AIモデルの進捗状況を追跡する設定
+                    const config = {
+                        // 公式が推奨するAIモデルデータのホスティング先を明示
+                        publicPath: 'https://staticimgly.com/@imgly/background-removal-data/1.5.5/dist/',
+                        progress: (key, current, total) => {
+                            let percent = 0;
+                            if (total > 0) {
+                                percent = Math.round((current / total) * 100);
+                            }
+                            
+                            // 処理の段階に応じてメッセージを変更
+                            let stageMsg = '';
+                            if (key.includes('fetch')) stageMsg = 'AIモデルをダウンロード中';
+                            else if (key.includes('compute')) stageMsg = '画像解析＆切り抜き処理中';
+                            else stageMsg = '処理中';
+
+                            loadingText.textContent = `${stageMsg}... (${percent}%)`;
+                            progressBar.style.width = `${percent}%`;
+                        }
+                    };
+
+                    // 背景削除の実行
+                    const resultBlob = await removeBackground(currentFile, config);
+
+                    // 結果の表示
+                    processedBlobUrl = URL.createObjectURL(resultBlob);
+                    processedImg.src = processedBlobUrl;
+                    
+                    resultPlaceholder.classList.add('hidden');
+                    processedImg.classList.remove('hidden');
+                    
+                    downloadBtn.disabled = false;
+                    statusText.textContent = '透過処理が完了しました！ダウンロードできます。';
+                    
+                    showToast('背景の削除が完了しました！', 'success');
+
+                } catch (error) {
+                    console.error('Background removal error:', error);
+                    showToast('処理中にエラーが発生しました。別の画像でお試しください。', 'error');
+                    removeBtn.disabled = false;
+                } finally {
+                    // ローディング非表示
+                    loadingOverlay.classList.add('hidden');
+                }
+            }
+
+            // 画像のダウンロード
+            function downloadResult() {
+                if (!processedBlobUrl) return;
+
+                // 元のファイル名から拡張子を外して _transparent.png を付ける
+                const originalName = currentFile.name.split('.')[0];
+                const newFileName = `${originalName}_transparent.png`;
+
+                const a = document.createElement('a');
+                a.href = processedBlobUrl;
+                a.download = newFileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+
+            // ==========================================
+            // ユーティリティ関数
+            // ==========================================
+
+            // トースト通知を表示する関数（Alertの代替）
+            function showToast(message, type = 'success') {
+                toastMsg.textContent = message;
+                
+                // アイコンと色を設定
+                if (type === 'error') {
+                    toast.className = 'fixed bottom-6 right-6 bg-red-600 text-white px-6 py-4 rounded-xl shadow-2xl transform transition-all duration-300 z-50 flex items-center gap-3';
+                    toastIcon.className = 'fa-solid fa-circle-exclamation text-xl text-red-200';
+                } else {
+                    toast.className = 'fixed bottom-6 right-6 bg-slate-800 text-white px-6 py-4 rounded-xl shadow-2xl transform transition-all duration-300 z-50 flex items-center gap-3';
+                    toastIcon.className = 'fa-solid fa-circle-check text-xl text-green-400';
+                }
+
+                // リフローを強制してアニメーションをトリガー
+                void toast.offsetWidth;
+                
+                // 表示
+                toast.classList.remove('translate-y-20', 'opacity-0');
+
+                // 4秒後に非表示
+                setTimeout(() => {
+                    toast.classList.add('translate-y-20', 'opacity-0');
+                }, 4000);
+            }
+        });
+    </script>
+</body>
+</html>
